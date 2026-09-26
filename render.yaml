@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: attendancepro-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: DEV_BYPASS_OTP
+        value: "false"
+      - key: MSG91_AUTH_KEY
+        sync: false
+      - key: MSG91_TEMPLATE_ID
+        sync: false
+      - key: MSG91_OTP_LENGTH
+        value: "6"
+      - key: MSG91_OTP_EXPIRY_MINUTES
+        value: "5"

@@ -1,0 +1,181 @@
+// AttendancePro - Prisma schema
+// Run: npx prisma migrate dev --name init  (after setting DATABASE_URL in .env)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  MEDICAL_LEAVE
+  APPROVED_LEAVE
+}
+
+enum AttendanceSource {
+  MANUAL
+  QR
+}
+
+// ---------- Users ----------
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  mobileNumber String   @unique // includes country code, e.g. 91XXXXXXXXXX - this is the login identity
+  passwordHash String?
+  // New accounts receive a temporary password and must choose their own at first sign-in.
+  mustChangePassword Boolean @default(true)
+  // Incremented when an admin resets a password or disables an account, which invalidates old sessions.
+  sessionVersion Int @default(0)
+  role         Role
+  isActive     Boolean  @default(true) // admin can deactivate an account without deleting it
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Teacher side
+  subjectAssignments TeacherSubject[]
+  createdSessions    AttendanceSession[]     @relation("SessionCreatedBy")
+  markedRecords      AttendanceRecord[]      @relation("MarkedBy")
+
+  // Student side
+  studentProfile     Student?
+  parentOfStudentId  String?  @unique
+  parentOfStudent    Student? @relation("StudentParent", fields: [parentOfStudentId], references: [id])
+
+  @@map("users")
+}
+
+// ---------- Classes / Sections ----------
+
+model Class {
+  id        String   @id @default(uuid())
+  name      String   // e.g. "TE Computer - A"
+  section   String?
+  createdAt DateTime @default(now())
+
+  students        Student[]
+  subjects        Subject[]
+  sessionClasses  AttendanceSessionClass[]
+
+  @@map("classes")
+}
+
+model Student {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    User?    @relation("StudentParent")
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  rollNo    String?
+  createdAt DateTime @default(now())
+
+  attendanceRecords AttendanceRecord[]
+
+  @@index([classId])
+  @@unique([classId, rollNo])
+  @@map("students")
+}
+
+// ---------- Subjects ----------
+
+model Subject {
+  id        String   @id @default(uuid())
+  name      String
+  code      String?
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  createdAt DateTime @default(now())
+
+  teacherAssignments TeacherSubject[]
+  sessions           AttendanceSession[]
+
+  @@index([classId])
+  @@map("subjects")
+}
+
+// Which teacher is assigned to which subject
+model TeacherSubject {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   User    @relation(fields: [teacherId], references: [id])
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  @@unique([teacherId, subjectId])
+  @@map("teacher_subjects")
+}
+
+// ---------- Attendance Sessions ----------
+
+model AttendanceSession {
+  id            String    @id @default(uuid())
+  subjectId     String
+  subject       Subject   @relation(fields: [subjectId], references: [id])
+  createdById   String
+  createdBy     User      @relation("SessionCreatedBy", fields: [createdById], references: [id])
+  eventName     String?   // optional event name, e.g. "Seminar on AI"
+  sessionDate   DateTime
+  lectureCount  Int       @default(1)
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  isActive      Boolean   @default(true)
+
+  // QR fields
+  qrToken       String?   @unique   // secure random token, regenerated per QR display
+  qrExpiresAt   DateTime?
+
+  createdAt     DateTime  @default(now())
+
+  classes AttendanceSessionClass[]
+  records AttendanceRecord[]
+
+  @@index([subjectId])
+  @@index([createdById])
+  @@map("attendance_sessions")
+}
+
+// Many-to-many: one session can span multiple classes (multi-class events)
+model AttendanceSessionClass {
+  id        String            @id @default(uuid())
+  sessionId String
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  classId   String
+  class     Class             @relation(fields: [classId], references: [id])
+
+  @@unique([sessionId, classId])
+  @@map("attendance_session_classes")
+}
+
+// One row per student per session
+model AttendanceRecord {
+  id          String            @id @default(uuid())
+  sessionId   String
+  session     AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student           @relation(fields: [studentId], references: [id])
+  status      AttendanceStatus  @default(ABSENT)
+  source      AttendanceSource  @default(MANUAL)
+  markedById  String?
+  markedBy    User?             @relation("MarkedBy", fields: [markedById], references: [id])
+  markedAt    DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([sessionId, studentId]) // prevents duplicate submissions for the same session
+  @@index([studentId])
+  @@map("attendance_records")
+}

@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+.expo/
+*.log
+.DS_Store
+android/
+ios/
+mobile-app/dist-check*/
+mobile-app/dist-final-check/
+backend/scripts/*.csv
