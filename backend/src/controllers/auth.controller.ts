@@ -6,12 +6,8 @@ import { normalizeMobileNumber } from "../utils/phone";
 import { comparePassword, hashPassword } from "../utils/password";
 import { logger } from "../utils/logger";
 
-const mobileSchema = z.object({
-  mobileNumber: z.string().min(10).max(15),
-});
-
 const loginSchema = z.object({
-  mobileNumber: z.string().min(10).max(15),
+  mobileNumber: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number."),
   password: z.string().min(1).max(128),
 });
 
